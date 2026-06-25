@@ -1,0 +1,7 @@
+# Keep generated GitHub Actions and Docker files reviewable and merge-safe.
+*.yml text eol=lf
+*.yaml text eol=lf
+Dockerfile text eol=lf
+Dockerfile.* text eol=lf
+*.sh text eol=lf
+*.patch text eol=lf
