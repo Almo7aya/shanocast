@@ -1,41 +1,128 @@
 name: Build Shanocast Binary
 
 on:
-  workflow_dispatch: # 允许手动触发
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+  pull_request:
 
 jobs:
-  build-and-extract:
+  build-linux:
+    name: Build Linux ${{ matrix.arch }}
     runs-on: ubuntu-latest
-    
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            platform: linux/amd64
+          - arch: arm64
+            platform: linux/arm64
+
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Build Docker Images
-      run: |
-        chmod +x docker/build-images.sh
-        ./docker/build-images.sh
-      # 这里调用了你现有的构建脚本，它会负责构建 base 和 shanocast 镜像
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
-    - name: Extract Binary from Container
-      run: |
-        # 创建一个临时容器但不启动
-        docker create --name temp_shanocast beardedtek/shanocast:latest
-        
-        # 将二进制文件从容器内的 /app/shanocast 复制到当前工作目录
-        # 参考了 docker/Dockerfile 中的路径 和 extract-binary.sh 的逻辑
-        docker cp temp_shanocast:/app/shanocast ./shanocast
-        
-        # 清理临时容器
-        docker rm temp_shanocast
-        
-        # 验证文件是否存在并赋予执行权限
-        ls -l ./shanocast
-        chmod +x ./shanocast
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: shanocast-linux-x86_64
-        path: ./shanocast
-        retention-days: 5
+      - name: Build static Linux binary
+        run: |
+          mkdir -p dist/linux-${{ matrix.arch }}
+          docker buildx build \
+            --platform ${{ matrix.platform }} \
+            --target artifact \
+            --output type=local,dest=dist/linux-${{ matrix.arch }} \
+            -f docker/Dockerfile .
+          mv dist/linux-${{ matrix.arch }}/shanocast dist/shanocast-linux-${{ matrix.arch }}
+          chmod +x dist/shanocast-linux-${{ matrix.arch }}
+
+      - name: Verify static Linux binary
+        run: |
+          file dist/shanocast-linux-${{ matrix.arch }}
+          if readelf -d dist/shanocast-linux-${{ matrix.arch }} | grep -q 'NEEDED'; then
+            echo "Binary still has shared library dependencies" >&2
+            readelf -d dist/shanocast-linux-${{ matrix.arch }} >&2
+            exit 1
+          fi
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: shanocast-linux-${{ matrix.arch }}
+          path: dist/shanocast-linux-${{ matrix.arch }}
+          retention-days: 5
+
+  build-windows:
+    name: Build Windows x86_64
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            patch
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-gn
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-ffmpeg
+            mingw-w64-ucrt-x86_64-SDL2
+            mingw-w64-ucrt-x86_64-binutils
+
+      - name: Build Windows binary
+        run: |
+          git clone https://chromium.googlesource.com/openscreen.git
+          cd openscreen
+          git checkout 934f2462ad01c407a596641dbc611df49e2017b4
+          git submodule update --init --recursive
+          patch -p1 < ../shanocast.patch
+
+          sed -i '127s/.*/using FileUniquePtr = std::unique_ptr<FILE, int(*)(FILE*)>;/' cast/receiver/channel/static_credentials.cc
+          mkdir -p /usr/local/include
+          ln -sf /ucrt64/include/libavcodec /usr/local/include/
+          ln -sf /ucrt64/include/libavformat /usr/local/include/
+          ln -sf /ucrt64/include/libavutil /usr/local/include/
+          ln -sf /ucrt64/include/libswscale /usr/local/include/
+
+          printf '#!/bin/sh\nexec /ucrt64/bin/pkg-config --static "$@"\n' > /usr/local/bin/pkg-config
+          chmod +x /usr/local/bin/pkg-config
+
+          gn gen out/Default --args='is_debug=false use_custom_libcxx=false have_ffmpeg=true have_libsdl2=true cast_allow_developer_certificate=true is_clang=false target_os="win" extra_ldflags=["-static","-static-libstdc++","-static-libgcc","-Wl,--as-needed"]'
+          find out/Default -name "*.ninja" -exec sed -i 's/-Werror/-Wno-error/g' {} +
+          find out/Default -name "*.ninja" -exec sed -i 's/-Wno-unknown-warning-option//g' {} +
+          sed -i 's/${cflags}/& -include stdint.h -D_GNU_SOURCE -Wno-old-style-definition -Wno-deprecated-non-prototype/g' out/Default/toolchain.ninja
+          sed -i 's/$cflags/& -include stdint.h -D_GNU_SOURCE -Wno-old-style-definition -Wno-deprecated-non-prototype/g' out/Default/toolchain.ninja
+          sed -i 's|-I../.."|"-I../.." "-I/ucrt64/include" "-I/usr/local/include"|' out/Default/toolchain.ninja
+          ninja -C out/Default cast_receiver
+          mkdir -p ../dist
+          cp out/Default/cast_receiver.exe ../dist/shanocast-windows-x86_64.exe
+
+      - name: Verify Windows binary dependencies
+        run: |
+          objdump -p dist/shanocast-windows-x86_64.exe | tee imports.txt
+          if grep -E 'DLL Name: (libstdc\+\+-|libgcc_s_|libav|SDL2|avcodec|avformat|avutil|swscale)' imports.txt; then
+            echo "Binary still imports third-party shared libraries" >&2
+            exit 1
+          fi
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: shanocast-windows-x86_64
+          path: dist/shanocast-windows-x86_64.exe
+          retention-days: 5
