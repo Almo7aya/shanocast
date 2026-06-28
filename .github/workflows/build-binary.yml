@@ -107,6 +107,9 @@ jobs:
           perl -0pi -e 's/\} else \{\n  # TODO\(miu\): Windows, and others\.\n  assert\(false, "is_FOO booleans not defined for current_os\."\)/} else if (current_os == "win") {\n  is_linux = false\n  is_mac = false\n  is_posix = false\n  is_win = true\n} else {\n  # TODO(miu): Windows, and others.\n  assert(false, "is_FOO booleans not defined for current_os.")/' build/config/BUILDCONFIG.gn
 
           sed -i '127s/.*/using FileUniquePtr = std::unique_ptr<FILE, int(*)(FILE*)>;/' cast/receiver/channel/static_credentials.cc
+          sed -i '/#include "ssl\/internal.h"/a #ifdef X509_NAME\
+#undef X509_NAME\
+#endif' third_party/boringssl/src/ssl/ssl_file.cc
           mkdir -p /usr/local/include
           ln -sf /ucrt64/include/libavcodec /usr/local/include/
           ln -sf /ucrt64/include/libavformat /usr/local/include/
