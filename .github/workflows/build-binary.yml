@@ -34,6 +34,7 @@ jobs:
           mkdir -p dist/linux-${{ matrix.arch }}
           docker buildx build \
             --platform ${{ matrix.platform }} \
+            --build-arg EXTRA_GN_ARGS='use_sysroot=false' \
             --target artifact \
             --output type=local,dest=dist/linux-${{ matrix.arch }} \
             -f docker/Dockerfile .
@@ -50,72 +51,4 @@ jobs:
         with:
           name: shanocast-linux-${{ matrix.arch }}
           path: dist/shanocast-linux-${{ matrix.arch }}
-          retention-days: 5
-
-  build-windows:
-    name: Build Windows x86_64
-    runs-on: windows-latest
-
-    defaults:
-      run:
-        shell: msys2 {0}
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up MSYS2
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: UCRT64
-          update: true
-          install: >-
-            git
-            patch
-            mingw-w64-ucrt-x86_64-gcc
-            mingw-w64-ucrt-x86_64-ninja
-            mingw-w64-ucrt-x86_64-gn
-            mingw-w64-ucrt-x86_64-pkgconf
-            mingw-w64-ucrt-x86_64-ffmpeg
-            mingw-w64-ucrt-x86_64-SDL2
-            mingw-w64-ucrt-x86_64-binutils
-
-      - name: Build Windows binary
-        run: |
-          git clone https://chromium.googlesource.com/openscreen.git
-          cd openscreen
-          git checkout 934f2462ad01c407a596641dbc611df49e2017b4
-          git submodule update --init --recursive
-          patch -p1 < ../shanocast.patch
-
-          sed -i '127s/.*/using FileUniquePtr = std::unique_ptr<FILE, int(*)(FILE*)>;/' cast/receiver/channel/static_credentials.cc
-          mkdir -p /usr/local/include
-          ln -sf /ucrt64/include/libavcodec /usr/local/include/
-          ln -sf /ucrt64/include/libavformat /usr/local/include/
-          ln -sf /ucrt64/include/libavutil /usr/local/include/
-          ln -sf /ucrt64/include/libswscale /usr/local/include/
-
-          mkdir -p /usr/local/bin
-          printf '#!/bin/sh\nexec /ucrt64/bin/pkg-config --static "$@"\n' > /usr/local/bin/pkg-config
-          chmod +x /usr/local/bin/pkg-config
-
-          gn gen out/Default --args='is_debug=false use_custom_libcxx=false have_ffmpeg=true have_libsdl2=true cast_allow_developer_certificate=true is_clang=false target_os="win" extra_ldflags=["-static-libstdc++","-static-libgcc","-Wl,--as-needed"]'
-          find out/Default -name "*.ninja" -exec sed -i 's/-Werror/-Wno-error/g' {} +
-          find out/Default -name "*.ninja" -exec sed -i 's/-Wno-unknown-warning-option//g' {} +
-          sed -i 's/${cflags}/& -include stdint.h -D_GNU_SOURCE -Wno-old-style-definition -Wno-deprecated-non-prototype/g' out/Default/toolchain.ninja
-          sed -i 's/$cflags/& -include stdint.h -D_GNU_SOURCE -Wno-old-style-definition -Wno-deprecated-non-prototype/g' out/Default/toolchain.ninja
-          sed -i 's|-I../.."|"-I../.." "-I/ucrt64/include" "-I/usr/local/include"|' out/Default/toolchain.ninja
-          ninja -C out/Default cast_receiver
-          mkdir -p ../dist
-          cp out/Default/cast_receiver.exe ../dist/shanocast-windows-x86_64.exe
-
-      - name: Inspect Windows binary dependencies
-        run: |
-          objdump -p dist/shanocast-windows-x86_64.exe | tee imports.txt
-
-      - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: shanocast-windows-x86_64
-          path: dist/shanocast-windows-x86_64.exe
           retention-days: 5
