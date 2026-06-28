@@ -123,7 +123,7 @@ jobs:
           sed -i 's/${cflags}/& -include stdint.h -D_GNU_SOURCE -Wno-old-style-definition -Wno-deprecated-non-prototype/g' out/Default/toolchain.ninja
           sed -i 's/$cflags/& -include stdint.h -D_GNU_SOURCE -Wno-old-style-definition -Wno-deprecated-non-prototype/g' out/Default/toolchain.ninja
           sed -i 's|-I../.."|"-I../.." "-I/ucrt64/include" "-I/usr/local/include"|' out/Default/toolchain.ninja
-          ninja -C out/Default cast_receiver
+          ninja -v -C out/Default cast_receiver
           mkdir -p ../dist
           cp out/Default/cast_receiver.exe ../dist/shanocast-windows-x86_64.exe
 
