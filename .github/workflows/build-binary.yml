@@ -118,6 +118,7 @@ jobs:
           chmod +x /usr/local/bin/pkg-config
 
           cat > ar_wrapper.py <<'PY'
+          import os
           import pathlib
           import shlex
           import subprocess
@@ -126,8 +127,17 @@ jobs:
           mode = sys.argv[1]
           output = sys.argv[2]
           rsp = sys.argv[3]
-          objects = shlex.split(pathlib.Path(rsp).read_text())
+          rsp_path = pathlib.Path(rsp)
+          text = rsp_path.read_text()
+          objects = shlex.split(text)
+          print(f"ar_wrapper cwd={os.getcwd()} output={output} rsp={rsp} rsp_size={rsp_path.stat().st_size} objects={len(objects)}", flush=True)
+          if not objects:
+            print(f"empty rsp content: {text!r}", flush=True)
           subprocess.check_call(["ar", mode, output, *objects])
+          output_path = pathlib.Path(output)
+          print(f"ar_wrapper produced={output_path.exists()} size={output_path.stat().st_size if output_path.exists() else 'missing'}", flush=True)
+          if not output_path.exists():
+            raise SystemExit(f"ar did not produce {output}")
           PY
 
           gn gen out/Default --args='is_debug=false use_custom_libcxx=false have_ffmpeg=true have_libsdl2=true cast_allow_developer_certificate=true is_clang=false target_os="win"'
@@ -136,7 +146,7 @@ jobs:
           sed -i 's/${cflags}/& -include stdint.h -D_GNU_SOURCE -Wno-old-style-definition -Wno-deprecated-non-prototype/g' out/Default/toolchain.ninja
           sed -i 's/$cflags/& -include stdint.h -D_GNU_SOURCE -Wno-old-style-definition -Wno-deprecated-non-prototype/g' out/Default/toolchain.ninja
           sed -i 's|-I../.."|"-I../.." "-I/ucrt64/include" "-I/usr/local/include"|' out/Default/toolchain.ninja
-          sed -i 's|ar rcs \([^ ]*\) @\([^ ]*\)|python3 ../../ar_wrapper.py rcs \1 \2|g' out/Default/toolchain.ninja
+          sed -i 's|ar rcs \([^ ]*\) @\([^ ]*\)|python3 -u ../../ar_wrapper.py rcs \1 \2|g' out/Default/toolchain.ninja
           command -v ar
           command -v gcc
           command -v g++
