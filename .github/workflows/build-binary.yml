@@ -16,15 +16,10 @@ jobs:
         include:
           - arch: x86_64
             platform: linux/amd64
-          - arch: arm64
-            platform: linux/arm64
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -34,7 +29,6 @@ jobs:
           mkdir -p dist/linux-${{ matrix.arch }}
           docker buildx build \
             --platform ${{ matrix.platform }} \
-            --build-arg EXTRA_GN_ARGS='sysroot_platform=""' \
             --target artifact \
             --output type=local,dest=dist/linux-${{ matrix.arch }} \
             -f docker/Dockerfile .
