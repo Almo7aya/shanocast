@@ -123,6 +123,7 @@ jobs:
           sed -i 's/${cflags}/& -include stdint.h -D_GNU_SOURCE -Wno-old-style-definition -Wno-deprecated-non-prototype/g' out/Default/toolchain.ninja
           sed -i 's/$cflags/& -include stdint.h -D_GNU_SOURCE -Wno-old-style-definition -Wno-deprecated-non-prototype/g' out/Default/toolchain.ninja
           sed -i 's|-I../.."|"-I../.." "-I/ucrt64/include" "-I/usr/local/include"|' out/Default/toolchain.ninja
+          sed -i 's|ar rcs \([^ ]*\) @\([^ ]*\)|xargs ar rcs \1 < \2|g' out/Default/toolchain.ninja
           command -v ar
           command -v gcc
           command -v g++
