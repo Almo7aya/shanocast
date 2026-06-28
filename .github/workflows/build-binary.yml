@@ -86,9 +86,9 @@ jobs:
           cat >> build/toolchain/linux/BUILD.gn <<'EOF'
 
           gcc_toolchain("gcc_win_x64") {
-            ar = "ar"
-            cc = "gcc"
-            cxx = "g++"
+            ar = "/ucrt64/bin/ar"
+            cc = "/ucrt64/bin/gcc"
+            cxx = "/ucrt64/bin/g++"
             ld = cxx
             toolchain_args = {
               current_cpu = "x64"
