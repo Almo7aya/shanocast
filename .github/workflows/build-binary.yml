@@ -34,7 +34,7 @@ jobs:
           mkdir -p dist/linux-${{ matrix.arch }}
           docker buildx build \
             --platform ${{ matrix.platform }} \
-            --build-arg EXTRA_GN_ARGS='use_sysroot=false' \
+            --build-arg EXTRA_GN_ARGS='sysroot_platform=""' \
             --target artifact \
             --output type=local,dest=dist/linux-${{ matrix.arch }} \
             -f docker/Dockerfile .
