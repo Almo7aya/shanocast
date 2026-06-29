@@ -34,7 +34,11 @@
               }).overrideAttrs (_: {
                 postFixup = "";
               });
+              staticLibopus = pkgs.pkgsStatic.libopus.overrideAttrs (_: {
+                doCheck = false;
+              });
               staticFfmpeg = pkgs.pkgsStatic.ffmpeg.override {
+                libopus = staticLibopus;
                 withDrm = false;
                 withJack = false;
                 withOpencl = false;
