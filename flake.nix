@@ -28,6 +28,7 @@
                 libdecorSupport = false;
                 libudevSupport = false;
                 libusbSupport = false;
+                openglSupport = false;
                 pipewireSupport = false;
                 pulseaudioSupport = false;
                 traySupport = false;
