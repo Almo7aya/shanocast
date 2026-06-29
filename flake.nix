@@ -42,6 +42,8 @@
                 withPulse = false;
                 withSdl2 = false;
                 withVaapi = false;
+                withV4l2 = false;
+                withV4l2M2m = false;
                 withVdpau = false;
               };
             in
