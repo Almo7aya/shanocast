@@ -18,7 +18,28 @@
         packages = rec {
           shanocast = default;
           default = pkgs.callPackage ./cast_receiver.nix { src = inputs.openscreen; };
-          shanocast-static = pkgs.pkgsStatic.callPackage ./cast_receiver.nix { src = inputs.openscreen; };
+          shanocast-static =
+            let
+              staticSDL3 = pkgs.pkgsStatic.sdl3.override {
+                dbusSupport = false;
+                drmSupport = false;
+                ibusSupport = false;
+                jackSupport = false;
+                libdecorSupport = false;
+                libudevSupport = false;
+                libusbSupport = false;
+                pipewireSupport = false;
+                pulseaudioSupport = false;
+                traySupport = false;
+                vulkanSupport = false;
+                waylandSupport = false;
+              };
+              staticSDL2 = pkgs.pkgsStatic.SDL2.override { sdl3 = staticSDL3; };
+            in
+            pkgs.pkgsStatic.callPackage ./cast_receiver.nix {
+              src = inputs.openscreen;
+              SDL2 = staticSDL2;
+            };
         };
       };
     };
