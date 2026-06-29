@@ -35,9 +35,15 @@
                 waylandSupport = false;
               };
               staticSDL2 = pkgs.pkgsStatic.SDL2.override { sdl3 = staticSDL3; };
+              staticFfmpeg = pkgs.pkgsStatic.ffmpeg.override {
+                withJack = false;
+                withPulse = false;
+                withSdl2 = false;
+              };
             in
             pkgs.pkgsStatic.callPackage ./cast_receiver.nix {
               src = inputs.openscreen;
+              ffmpeg = staticFfmpeg;
               SDL2 = staticSDL2;
             };
         };
