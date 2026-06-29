@@ -28,6 +28,8 @@ stdenv.mkDerivation {
     "cast_allow_developer_certificate=true"
     "have_ffmpeg=true"
     "have_libsdl2=true"
+  ] ++ lib.optionals stdenv.hostPlatform.isStatic [
+    "extra_ldflags=[\"-static\"]"
   ];
   installPhase = ''
     mkdir -p $out/bin

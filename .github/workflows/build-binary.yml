@@ -8,169 +8,41 @@ on:
 
 jobs:
   build-linux:
-    name: Build Linux ${{ matrix.arch }}
+    name: Build static Linux x86_64
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: x86_64
-            platform: linux/amd64
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
 
       - name: Build static Linux binary
         run: |
-          mkdir -p dist/linux-${{ matrix.arch }}
-          docker buildx build \
-            --platform ${{ matrix.platform }} \
-            --target artifact \
-            --output type=local,dest=dist/linux-${{ matrix.arch }} \
-            -f docker/Dockerfile .
-          mv dist/linux-${{ matrix.arch }}/shanocast dist/shanocast-linux-${{ matrix.arch }}
-          chmod +x dist/shanocast-linux-${{ matrix.arch }}
+          nix build .#shanocast-static --print-build-logs
+          mkdir -p dist
+          cp -L result/bin/shanocast dist/shanocast-linux-x86_64
+          chmod +x dist/shanocast-linux-x86_64
 
-      - name: Inspect Linux binary
+      - name: Verify static Linux binary
         run: |
-          file dist/shanocast-linux-${{ matrix.arch }}
-          readelf -d dist/shanocast-linux-${{ matrix.arch }} || true
+          file dist/shanocast-linux-x86_64
+          file dist/shanocast-linux-x86_64 | grep -q 'statically linked'
+          if ldd dist/shanocast-linux-x86_64 2>&1 | tee ldd.txt | grep -qv 'not a dynamic executable'; then
+            echo 'Binary is dynamically linked:'
+            cat ldd.txt
+            exit 1
+          fi
+          if readelf -d dist/shanocast-linux-x86_64 > dynamic.txt 2>/dev/null; then
+            echo 'Binary has a dynamic section:'
+            cat dynamic.txt
+            exit 1
+          fi
 
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
         with:
-          name: shanocast-linux-${{ matrix.arch }}
-          path: dist/shanocast-linux-${{ matrix.arch }}
-          retention-days: 5
-
-  build-windows:
-    name: Build Windows x86_64
-    runs-on: windows-latest
-
-    defaults:
-      run:
-        shell: msys2 {0}
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up MSYS2
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: UCRT64
-          update: true
-          install: >-
-            git
-            patch
-            mingw-w64-ucrt-x86_64-gcc
-            mingw-w64-ucrt-x86_64-ninja
-            mingw-w64-ucrt-x86_64-gn
-            mingw-w64-ucrt-x86_64-pkgconf
-            mingw-w64-ucrt-x86_64-ffmpeg
-            mingw-w64-ucrt-x86_64-SDL2
-            mingw-w64-ucrt-x86_64-binutils
-
-      - name: Build Windows binary
-        run: |
-          git clone https://chromium.googlesource.com/openscreen.git
-          cd openscreen
-          git checkout 934f2462ad01c407a596641dbc611df49e2017b4
-          git submodule update --init --recursive
-          patch -p1 < ../shanocast.patch
-
-          cat >> build/toolchain/linux/BUILD.gn <<'EOF'
-
-          gcc_toolchain("gcc_win_x64") {
-            ar = "ar"
-            cc = "gcc"
-            cxx = "g++"
-            ld = cxx
-            toolchain_args = {
-              current_cpu = "x64"
-              current_os = "win"
-              is_gcc = true
-            }
-          }
-          EOF
-
-          perl -0pi -e 's/if \(current_os == "chromeos" \|\| current_os == "linux"\) \{/if (current_os == "chromeos" || current_os == "linux" || current_os == "win") {/' build/config/BUILDCONFIG.gn
-          perl -0pi -e 's/host_toolchain = "\/\/build\/toolchain\/linux:gcc_\$host_cpu"/if (current_os == "win") { host_toolchain = "\/\/build\/toolchain\/linux:gcc_win_x64" } else { host_toolchain = "\/\/build\/toolchain\/linux:gcc_\$host_cpu" }/' build/config/BUILDCONFIG.gn
-          perl -0pi -e 's/_default_toolchain = "\/\/build\/toolchain\/linux:gcc_\$target_cpu"/if (target_os == "win") { _default_toolchain = "\/\/build\/toolchain\/linux:gcc_win_x64" } else { _default_toolchain = "\/\/build\/toolchain\/linux:gcc_\$target_cpu" }/' build/config/BUILDCONFIG.gn
-          perl -0pi -e 's/\} else if \(target_os == "mac"\) \{/} else if (target_os == "win") {\n  _default_toolchain = "\/\/build\/toolchain\/linux:gcc_win_x64"\n} else if (target_os == "mac") {/' build/config/BUILDCONFIG.gn
-          perl -0pi -e 's/(is_linux = true\n  is_mac = false\n  is_posix = true)/$1\n  is_win = false/' build/config/BUILDCONFIG.gn
-          perl -0pi -e 's/(is_linux = false\n  is_mac = true\n  is_posix = true)/$1\n  is_win = false/' build/config/BUILDCONFIG.gn
-          perl -0pi -e 's/\} else \{\n  # TODO\(miu\): Windows, and others\.\n  assert\(false, "is_FOO booleans not defined for current_os\."\)/} else if (current_os == "win") {\n  is_linux = false\n  is_mac = false\n  is_posix = false\n  is_win = true\n} else {\n  # TODO(miu): Windows, and others.\n  assert(false, "is_FOO booleans not defined for current_os.")/' build/config/BUILDCONFIG.gn
-
-          sed -i '127s/.*/using FileUniquePtr = std::unique_ptr<FILE, int(*)(FILE*)>;/' cast/receiver/channel/static_credentials.cc
-          sed -i '/#include "ssl\/internal.h"/a #ifdef X509_NAME\
-#undef X509_NAME\
-#endif' third_party/boringssl/src/ssl/ssl_file.cc
-          mkdir -p /usr/local/include
-          ln -sf /ucrt64/include/libavcodec /usr/local/include/
-          ln -sf /ucrt64/include/libavformat /usr/local/include/
-          ln -sf /ucrt64/include/libavutil /usr/local/include/
-          ln -sf /ucrt64/include/libswscale /usr/local/include/
-
-          mkdir -p /usr/local/bin
-          printf '#!/bin/sh\nexec /ucrt64/bin/pkg-config --static "$@"\n' > /usr/local/bin/pkg-config
-          chmod +x /usr/local/bin/pkg-config
-
-          cat > ar_wrapper.py <<'PY'
-          import os
-          import pathlib
-          import shlex
-          import subprocess
-          import sys
-
-          mode = sys.argv[1]
-          output = sys.argv[2]
-          rsp = sys.argv[3]
-          rsp_path = pathlib.Path(rsp)
-          text = rsp_path.read_text()
-          objects = shlex.split(text)
-          print(f"ar_wrapper cwd={os.getcwd()} output={output} rsp={rsp} rsp_size={rsp_path.stat().st_size} objects={len(objects)}", flush=True)
-          if not objects:
-            print(f"empty rsp content: {text!r}", flush=True)
-          output_path = pathlib.Path(output)
-          if output_path.exists():
-            output_path.unlink()
-          subprocess.check_call(["ar", mode, output, *objects])
-          print(f"ar_wrapper produced={output_path.exists()} size={output_path.stat().st_size if output_path.exists() else 'missing'}", flush=True)
-          if not output_path.exists():
-            raise SystemExit(f"ar did not produce {output}")
-          PY
-
-          gn gen out/Default --args='is_debug=false use_custom_libcxx=false have_ffmpeg=true have_libsdl2=true cast_allow_developer_certificate=true is_clang=false target_os="win"'
-          find out/Default -name "*.ninja" -exec sed -i 's/-Werror/-Wno-error/g' {} +
-          find out/Default -name "*.ninja" -exec sed -i 's/-Wno-unknown-warning-option//g' {} +
-          sed -i 's/${cflags}/& -include stdint.h -D_GNU_SOURCE -Wno-old-style-definition -Wno-deprecated-non-prototype/g' out/Default/toolchain.ninja
-          sed -i 's/$cflags/& -include stdint.h -D_GNU_SOURCE -Wno-old-style-definition -Wno-deprecated-non-prototype/g' out/Default/toolchain.ninja
-          sed -i 's|-I../.."|"-I../.." "-I/ucrt64/include" "-I/usr/local/include"|' out/Default/toolchain.ninja
-          sed -i 's|rm -f \([^ ]*\) && ar rcs \1 @\([^ ]*\)|python3 -u ../../ar_wrapper.py rcs \1 \2|g' out/Default/toolchain.ninja
-          command -v ar
-          command -v gcc
-          command -v g++
-          ninja -v -C out/Default cast_receiver || {
-            find out/Default -name 'libprotoc_lib.a' -o -name 'libprotobuf_full.a' -o -name 'libchrome_zlib.a'
-            ls -la out/Default/obj/third_party/protobuf || true
-            ls -la out/Default/obj/third_party/zlib || true
-            exit 1
-          }
-          mkdir -p ../dist
-          cp out/Default/cast_receiver.exe ../dist/shanocast-windows-x86_64.exe
-
-      - name: Inspect Windows binary dependencies
-        run: |
-          objdump -p dist/shanocast-windows-x86_64.exe | tee imports.txt
-
-      - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: shanocast-windows-x86_64
-          path: dist/shanocast-windows-x86_64.exe
+          name: shanocast-linux-x86_64-static
+          path: dist/shanocast-linux-x86_64
           retention-days: 5

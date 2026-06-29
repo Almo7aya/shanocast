@@ -18,6 +18,7 @@
         packages = rec {
           shanocast = default;
           default = pkgs.callPackage ./cast_receiver.nix { src = inputs.openscreen; };
+          shanocast-static = pkgs.pkgsStatic.callPackage ./cast_receiver.nix { src = inputs.openscreen; };
         };
       };
     };
