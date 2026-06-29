@@ -45,6 +45,7 @@
                 withOpengl = false;
                 withPulse = false;
                 withSdl2 = false;
+                withSoxr = false;
                 withSrt = false;
                 withVaapi = false;
                 withV4l2 = false;
