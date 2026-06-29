@@ -20,7 +20,7 @@
           default = pkgs.callPackage ./cast_receiver.nix { src = inputs.openscreen; };
           shanocast-static =
             let
-              staticSDL2 = pkgs.pkgsStatic.SDL2.override {
+              staticSDL2 = (pkgs.pkgsStatic.SDL2.override {
                 dbusSupport = false;
                 drmSupport = false;
                 ibusSupport = false;
@@ -31,7 +31,9 @@
                 udevSupport = false;
                 waylandSupport = false;
                 withStatic = true;
-              };
+              }).overrideAttrs (_: {
+                postFixup = "";
+              });
               staticFfmpeg = pkgs.pkgsStatic.ffmpeg.override {
                 withDrm = false;
                 withJack = false;
