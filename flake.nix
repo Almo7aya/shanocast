@@ -50,6 +50,7 @@
                 withV4l2 = false;
                 withV4l2M2m = false;
                 withVdpau = false;
+                withXvid = false;
               };
             in
             pkgs.pkgsStatic.callPackage ./cast_receiver.nix {
