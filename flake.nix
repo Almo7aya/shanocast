@@ -37,9 +37,14 @@
               };
               staticSDL2 = pkgs.pkgsStatic.SDL2.override { sdl3 = staticSDL3; };
               staticFfmpeg = pkgs.pkgsStatic.ffmpeg.override {
+                withDrm = false;
                 withJack = false;
+                withOpencl = false;
+                withOpengl = false;
                 withPulse = false;
                 withSdl2 = false;
+                withVaapi = false;
+                withVdpau = false;
               };
             in
             pkgs.pkgsStatic.callPackage ./cast_receiver.nix {
